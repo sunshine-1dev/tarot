@@ -25,7 +25,7 @@ export default function App() {
   }, [initialize]);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/tarot">
       <div className="relative min-h-screen bg-bg-primary text-text-primary">
         <StarField />
         <Navbar />
