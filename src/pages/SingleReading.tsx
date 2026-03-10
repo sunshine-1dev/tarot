@@ -1,15 +1,18 @@
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useReadingStore } from '../stores/useStore';
+import { useAuthStore } from '../stores/useAuthStore';
 import TarotCard from '../components/TarotCard';
 import ShuffleAnimation from '../components/ShuffleAnimation';
 import InterpretationPanel from '../components/InterpretationPanel';
 import { streamInterpretation } from '../lib/ai';
+import { saveReadingRecord } from '../lib/readings';
 
 type Phase = 'question' | 'shuffle' | 'draw' | 'reveal';
 
 export default function SingleReading() {
   const [phase, setPhase] = useState<Phase>('question');
+  const { user } = useAuthStore();
   const {
     question, setQuestion,
     drawnCards, drawAndReveal,
@@ -44,14 +47,20 @@ export default function SingleReading() {
       positionLabel: '当下启示',
     }));
 
+    let fullText = '';
     try {
-      for await (const char of streamInterpretation(cards, q || undefined)) {
-        appendInterpretation(char);
+      for await (const chunk of streamInterpretation(cards, q || undefined)) {
+        fullText += chunk;
+        appendInterpretation(chunk);
       }
     } finally {
       setIsInterpreting(false);
+      // Save record if user is logged in
+      if (user && fullText) {
+        saveReadingRecord(user.id, q || null, 'single', '单牌占卜', cards, fullText);
+      }
     }
-  }, [isRevealed, setRevealed, setIsInterpreting, appendInterpretation]);
+  }, [isRevealed, setRevealed, setIsInterpreting, appendInterpretation, user]);
 
   const handleReset = () => {
     resetReading();

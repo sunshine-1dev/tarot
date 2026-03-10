@@ -7,6 +7,7 @@ import ShuffleAnimation from '../components/ShuffleAnimation';
 import InterpretationPanel from '../components/InterpretationPanel';
 import AuthPrompt from '../components/AuthPrompt';
 import { streamInterpretation } from '../lib/ai';
+import { saveReadingRecord } from '../lib/readings';
 
 type Phase = 'question' | 'shuffle' | 'draw' | 'reveal';
 
@@ -66,12 +67,17 @@ export default function CelticCrossReading() {
         positionLabel: positions[i].label,
       }));
 
+      let fullText = '';
       try {
-        for await (const char of streamInterpretation(cards, q || undefined)) {
-          appendInterpretation(char);
+        for await (const chunk of streamInterpretation(cards, q || undefined)) {
+          fullText += chunk;
+          appendInterpretation(chunk);
         }
       } finally {
         setIsInterpreting(false);
+        if (user && fullText) {
+          saveReadingRecord(user.id, q || null, 'celtic_cross', '凯尔特十字', cards, fullText);
+        }
         if (!user) {
           setTimeout(() => setShowAuthPrompt(true), 2000);
         }
@@ -168,7 +174,6 @@ export default function CelticCrossReading() {
 
               {/* Celtic Cross Layout */}
               <div className="relative w-full max-w-3xl mx-auto" style={{ minHeight: '600px' }}>
-                {/* Cross Section - Center */}
                 {/* Position 1: Significator (center) */}
                 <div className="absolute" style={{ left: '50%', top: '40%', transform: 'translate(-50%, -50%)' }}>
                   <CelticCard
@@ -237,7 +242,6 @@ export default function CelticCrossReading() {
                   />
                 </div>
 
-                {/* Staff Section - Right Column (positions 7-10, bottom to top) */}
                 {/* Position 7: Self */}
                 <div className="absolute hidden md:block" style={{ right: '-5%', top: '75%', transform: 'translate(-50%, -50%)' }}>
                   <CelticCard

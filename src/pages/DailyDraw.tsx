@@ -5,6 +5,8 @@ import type { TarotCard as TarotCardType } from '../lib/tarot-data';
 import TarotCard from '../components/TarotCard';
 import InterpretationPanel from '../components/InterpretationPanel';
 import { streamInterpretation } from '../lib/ai';
+import { useAuthStore } from '../stores/useAuthStore';
+import { saveReadingRecord } from '../lib/readings';
 
 interface DailyCardState {
   card: TarotCardType;
@@ -18,6 +20,7 @@ export default function DailyDraw() {
   const [interpretation, setInterpretation] = useState('');
   const [isInterpreting, setIsInterpreting] = useState(false);
   const [hasDrawnToday, setHasDrawnToday] = useState(false);
+  const { user } = useAuthStore();
 
   const today = new Date().toLocaleDateString('zh-CN', {
     year: 'numeric',
@@ -69,15 +72,19 @@ export default function DailyDraw() {
 
     let fullText = '';
     try {
-      for await (const char of streamInterpretation(cards, '请为我的今天给出指引')) {
-        fullText += char;
+      for await (const chunk of streamInterpretation(cards, '请为我的今天给出指引')) {
+        fullText += chunk;
         setInterpretation(fullText);
       }
       localStorage.setItem('daily-draw-interpretation', fullText);
     } finally {
       setIsInterpreting(false);
+      // Save record if user is logged in
+      if (user && fullText) {
+        saveReadingRecord(user.id, '每日指引', 'daily', '每日一牌', cards, fullText);
+      }
     }
-  }, [isFlipped, dailyCard]);
+  }, [isFlipped, dailyCard, user]);
 
   return (
     <div className="min-h-screen pt-24 pb-16 px-4">

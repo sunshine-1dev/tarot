@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
+import type { User } from '@supabase/supabase-js';
 
 export interface UserProfile {
   id: string;
@@ -23,21 +24,63 @@ interface AuthState {
   clearError: () => void;
 }
 
-// Mock user for demo/offline mode
-function getMockUser(): UserProfile | null {
-  const saved = localStorage.getItem('tarot-mock-user');
-  if (saved) {
-    try { return JSON.parse(saved); } catch { return null; }
-  }
-  return null;
-}
+async function fetchOrCreateProfile(user: User): Promise<UserProfile> {
+  // Try to fetch existing profile
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single();
 
-function saveMockUser(user: UserProfile | null) {
-  if (user) {
-    localStorage.setItem('tarot-mock-user', JSON.stringify(user));
-  } else {
-    localStorage.removeItem('tarot-mock-user');
+  if (profile) {
+    return {
+      id: profile.id,
+      email: profile.email || user.email || '',
+      username: profile.username || user.user_metadata?.username || user.email?.split('@')[0] || '占卜师',
+      avatar_url: profile.avatar_url || user.user_metadata?.avatar_url || null,
+      created_at: profile.created_at,
+    };
   }
+
+  // Profile doesn't exist yet — create one
+  const username = user.user_metadata?.username
+    || user.user_metadata?.user_name      // GitHub OAuth provides user_name
+    || user.user_metadata?.full_name
+    || user.email?.split('@')[0]
+    || '占卜师';
+
+  const newProfile = {
+    id: user.id,
+    username,
+    email: user.email || '',
+    avatar_url: user.user_metadata?.avatar_url || null,
+  };
+
+  const { data: created, error } = await supabase
+    .from('profiles')
+    .upsert(newProfile, { onConflict: 'id' })
+    .select()
+    .single();
+
+  if (error) {
+    console.warn('Failed to create profile:', error);
+    // Return a fallback profile from auth data
+    return {
+      id: user.id,
+      email: user.email || '',
+      username,
+      avatar_url: user.user_metadata?.avatar_url || null,
+      created_at: user.created_at,
+    };
+  }
+
+  return {
+    id: created.id,
+    email: created.email || user.email || '',
+    username: created.username,
+    avatar_url: created.avatar_url,
+    created_at: created.created_at,
+  };
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -47,26 +90,23 @@ export const useAuthStore = create<AuthState>((set) => ({
   error: null,
 
   initialize: async () => {
-    if (!isSupabaseConfigured()) {
-      // Offline mode: check localStorage
-      const mockUser = getMockUser();
-      set({ user: mockUser, isInitialized: true, isLoading: false });
-      return;
-    }
-
     try {
       set({ isLoading: true });
-      const { data: { session } } = await supabase!.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
-        const profile: UserProfile = {
-          id: session.user.id,
-          email: session.user.email || '',
-          username: session.user.user_metadata?.username || session.user.email?.split('@')[0] || '占卜师',
-          avatar_url: session.user.user_metadata?.avatar_url || null,
-          created_at: session.user.created_at,
-        };
+        const profile = await fetchOrCreateProfile(session.user);
         set({ user: profile });
       }
+
+      // Listen for auth state changes (e.g. OAuth callback, token refresh)
+      supabase.auth.onAuthStateChange(async (_event, session) => {
+        if (session?.user) {
+          const profile = await fetchOrCreateProfile(session.user);
+          set({ user: profile });
+        } else {
+          set({ user: null });
+        }
+      });
     } catch (e) {
       console.warn('Auth initialization failed:', e);
     } finally {
@@ -75,35 +115,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   login: async (email: string, password: string): Promise<boolean> => {
-    if (!isSupabaseConfigured()) {
-      // Offline mock login
-      const mockUser: UserProfile = {
-        id: 'mock-' + Date.now(),
-        email,
-        username: email.split('@')[0],
-        avatar_url: null,
-        created_at: new Date().toISOString(),
-      };
-      saveMockUser(mockUser);
-      set({ user: mockUser, error: null });
-      return true;
-    }
-
     try {
       set({ isLoading: true, error: null });
-      const { data, error } = await supabase!.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         set({ error: error.message, isLoading: false });
         return false;
       }
       if (data.user) {
-        const profile: UserProfile = {
-          id: data.user.id,
-          email: data.user.email || '',
-          username: data.user.user_metadata?.username || data.user.email?.split('@')[0] || '占卜师',
-          avatar_url: data.user.user_metadata?.avatar_url || null,
-          created_at: data.user.created_at,
-        };
+        const profile = await fetchOrCreateProfile(data.user);
         set({ user: profile, isLoading: false });
         return true;
       }
@@ -116,23 +136,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   signup: async (email: string, password: string, username: string): Promise<boolean> => {
-    if (!isSupabaseConfigured()) {
-      // Offline mock signup
-      const mockUser: UserProfile = {
-        id: 'mock-' + Date.now(),
-        email,
-        username,
-        avatar_url: null,
-        created_at: new Date().toISOString(),
-      };
-      saveMockUser(mockUser);
-      set({ user: mockUser, error: null });
-      return true;
-    }
-
     try {
       set({ isLoading: true, error: null });
-      const { data, error } = await supabase!.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: { data: { username } },
@@ -142,9 +148,17 @@ export const useAuthStore = create<AuthState>((set) => ({
         return false;
       }
       if (data.user) {
+        // Create profile record
+        await supabase.from('profiles').upsert({
+          id: data.user.id,
+          username,
+          email,
+          avatar_url: null,
+        }, { onConflict: 'id' });
+
         const profile: UserProfile = {
           id: data.user.id,
-          email: data.user.email || '',
+          email,
           username,
           avatar_url: null,
           created_at: data.user.created_at,
@@ -161,14 +175,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   loginWithGitHub: async () => {
-    if (!isSupabaseConfigured()) {
-      set({ error: 'GitHub 登录需要配置 Supabase' });
-      return;
-    }
     try {
-      await supabase!.auth.signInWithOAuth({
+      await supabase.auth.signInWithOAuth({
         provider: 'github',
-        options: { redirectTo: window.location.origin + '/tarot/auth/callback' },
+        options: {
+          redirectTo: 'https://sunshine-1dev.github.io/tarot/auth/callback',
+        },
       });
     } catch (e) {
       set({ error: 'GitHub 登录失败' });
@@ -177,10 +189,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    if (isSupabaseConfigured()) {
-      await supabase!.auth.signOut();
-    }
-    saveMockUser(null);
+    await supabase.auth.signOut();
     set({ user: null, error: null });
   },
 

@@ -1,26 +1,12 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = 'https://wuuxjzmpvklyehfddrpy.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1dXhqem1wdmtseWVoZmRkcnB5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg2Mjk1MzQsImV4cCI6MjA4NDIwNTUzNH0.HPmHoLVwsY_nLiHkcm2hlg0f_Lvmpc7LZvQN7DFLJEE';
 
-let supabase: SupabaseClient | null = null;
-
-try {
-  if (supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('https://') && !supabaseUrl.includes('placeholder')) {
-    supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: true,
-      },
-    });
-  }
-} catch (e) {
-  console.warn('Supabase initialization failed, running in offline mode:', e);
-}
-
-export { supabase };
-
-export function isSupabaseConfigured(): boolean {
-  return supabase !== null;
-}
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+  },
+});

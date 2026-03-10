@@ -1,83 +1,30 @@
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
+import { fetchReadingHistory, type ReadingRecord } from '../lib/readings';
 
-interface HistoryItem {
-  id: string;
-  spread: string;
-  spreadIcon: string;
-  question: string;
-  cardNames: string[];
-  date: string;
-  isPublic: boolean;
-  likes: number;
-}
-
-const mockHistory: HistoryItem[] = [
-  {
-    id: '1',
-    spread: '凯尔特十字',
-    spreadIcon: '☘️',
-    question: '我的事业发展方向是什么？',
-    cardNames: ['愚者', '女祭司', '皇帝', '命运之轮', '星星', '太阳', '世界', '权杖三', '圣杯六', '宝剑国王'],
-    date: '2026-03-10 14:30',
-    isPublic: true,
-    likes: 12,
-  },
-  {
-    id: '2',
-    spread: '三牌阵',
-    spreadIcon: '🔮',
-    question: '这段感情的走向如何？',
-    cardNames: ['恋人', '倒吊人', '星星'],
-    date: '2026-03-09 20:15',
-    isPublic: false,
-    likes: 0,
-  },
-  {
-    id: '3',
-    spread: '单牌占卜',
-    spreadIcon: '🎴',
-    question: '今天我需要注意什么？',
-    cardNames: ['力量'],
-    date: '2026-03-09 09:00',
-    isPublic: true,
-    likes: 5,
-  },
-  {
-    id: '4',
-    spread: '每日一牌',
-    spreadIcon: '☀️',
-    question: '每日指引',
-    cardNames: ['月亮'],
-    date: '2026-03-08 08:00',
-    isPublic: false,
-    likes: 0,
-  },
-  {
-    id: '5',
-    spread: '三牌阵',
-    spreadIcon: '🔮',
-    question: '换工作是否明智？',
-    cardNames: ['塔', '节制', '太阳'],
-    date: '2026-03-07 16:45',
-    isPublic: true,
-    likes: 8,
-  },
-  {
-    id: '6',
-    spread: '每日一牌',
-    spreadIcon: '☀️',
-    question: '每日指引',
-    cardNames: ['魔术师'],
-    date: '2026-03-07 07:30',
-    isPublic: false,
-    likes: 0,
-  },
-];
+const spreadIcons: Record<string, string> = {
+  single: '🎴',
+  three_card: '🔮',
+  celtic_cross: '☘️',
+  daily: '☀️',
+};
 
 export default function History() {
   const { user } = useAuthStore();
+  const [records, setRecords] = useState<ReadingRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setIsLoading(true);
+      fetchReadingHistory(user.id).then(data => {
+        setRecords(data);
+        setIsLoading(false);
+      });
+    }
+  }, [user]);
 
   if (!user) {
     return (
@@ -129,9 +76,13 @@ export default function History() {
           className="grid grid-cols-3 gap-4 mb-8"
         >
           {[
-            { label: '总占卜', value: mockHistory.length, icon: '🔮' },
-            { label: '获得赞', value: mockHistory.reduce((a, h) => a + h.likes, 0), icon: '❤️' },
-            { label: '公开分享', value: mockHistory.filter(h => h.isPublic).length, icon: '🌍' },
+            { label: '总占卜', value: records.length, icon: '🔮' },
+            { label: '本周', value: records.filter(r => {
+              const weekAgo = new Date();
+              weekAgo.setDate(weekAgo.getDate() - 7);
+              return new Date(r.created_at) > weekAgo;
+            }).length, icon: '📅' },
+            { label: '牌阵类型', value: new Set(records.map(r => r.spread_id)).size, icon: '🃏' },
           ].map(stat => (
             <div
               key={stat.label}
@@ -144,69 +95,122 @@ export default function History() {
           ))}
         </motion.div>
 
-        {/* History List */}
-        <div className="space-y-4">
-          {mockHistory.map((item, i) => (
+        {/* Loading state */}
+        {isLoading && (
+          <div className="text-center py-12">
             <motion.div
-              key={item.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="group bg-bg-secondary/40 border border-accent-purple/10 rounded-xl p-5
-                hover:border-accent-gold/30 transition-all cursor-pointer"
+              className="text-4xl mb-4"
+              animate={{ rotateY: [0, 360] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-lg">{item.spreadIcon}</span>
-                    <span className="text-accent-gold text-sm font-medium">{item.spread}</span>
-                    {item.isPublic && (
-                      <span className="px-2 py-0.5 bg-green-500/10 text-green-400 text-[10px] rounded-full">
-                        公开
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-text-primary text-sm mb-2">
-                    {item.question}
-                  </p>
-
-                  {/* Card names */}
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {item.cardNames.map(name => (
-                      <span
-                        key={name}
-                        className="px-2 py-0.5 bg-accent-purple/10 text-text-secondary text-xs rounded"
-                      >
-                        {name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Right side */}
-                <div className="text-right flex-shrink-0">
-                  <div className="text-text-secondary/40 text-xs">{item.date}</div>
-                  {item.likes > 0 && (
-                    <div className="text-text-secondary/60 text-xs mt-1">
-                      ❤️ {item.likes}
-                    </div>
-                  )}
-                </div>
-              </div>
+              🔮
             </motion.div>
-          ))}
-        </div>
+            <p className="text-text-secondary">正在加载你的占卜记录...</p>
+          </div>
+        )}
 
-        {/* Load more hint */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="text-center text-text-secondary/40 text-sm mt-8"
-        >
-          — 共 {mockHistory.length} 条记录 —
-        </motion.p>
+        {/* Empty state */}
+        {!isLoading && records.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-center py-12"
+          >
+            <div className="text-5xl mb-4">🌙</div>
+            <h3 className="text-xl font-bold text-text-primary mb-2">还没有占卜记录</h3>
+            <p className="text-text-secondary mb-6">去抽一张牌，开始你的星语之旅吧！</p>
+            <Link to="/reading">
+              <motion.button
+                className="px-6 py-2.5 bg-gradient-to-r from-accent-gold to-amber-600 text-bg-primary
+                  rounded-full font-bold hover:shadow-lg hover:shadow-accent-gold/20"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                🔮 开始占卜
+              </motion.button>
+            </Link>
+          </motion.div>
+        )}
+
+        {/* History List */}
+        {!isLoading && records.length > 0 && (
+          <div className="space-y-4">
+            {records.map((record, i) => {
+              const icon = spreadIcons[record.spread_id] || '🔮';
+              const cardNames = Array.isArray(record.drawn_cards)
+                ? record.drawn_cards.map(c => c.card_name_cn || c.card_name || '未知牌')
+                : [];
+              const date = new Date(record.created_at).toLocaleString('zh-CN', {
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+
+              return (
+                <motion.div
+                  key={record.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="group bg-bg-secondary/40 border border-accent-purple/10 rounded-xl p-5
+                    hover:border-accent-gold/30 transition-all"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">{icon}</span>
+                        <span className="text-accent-gold text-sm font-medium">{record.spread_name}</span>
+                      </div>
+
+                      {record.question && (
+                        <p className="text-text-primary text-sm mb-2">
+                          {record.question}
+                        </p>
+                      )}
+
+                      {/* Card names */}
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {cardNames.map((name, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 bg-accent-purple/10 text-text-secondary text-xs rounded"
+                          >
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+
+                      {/* Interpretation preview */}
+                      {record.interpretation && (
+                        <p className="text-text-secondary/60 text-xs line-clamp-2 mt-1">
+                          {record.interpretation.slice(0, 120)}...
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Right side */}
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-text-secondary/40 text-xs">{date}</div>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Record count */}
+        {!isLoading && records.length > 0 && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="text-center text-text-secondary/40 text-sm mt-8"
+          >
+            — 共 {records.length} 条记录 —
+          </motion.p>
+        )}
       </div>
     </div>
   );
