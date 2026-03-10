@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../lib/supabase';
 
 interface LeaderboardEntry {
   rank: number;
@@ -12,60 +13,8 @@ interface LeaderboardEntry {
 const tabs = [
   { id: 'master', label: '🔮 占卜达人', desc: '累计占卜次数最多' },
   { id: 'streak', label: '🔥 坚持之星', desc: '每日一牌连续签到天数' },
-  { id: 'popular', label: '❤️ 最受欢迎', desc: '获赞最多的占卜师' },
   { id: 'weekly', label: '⚡ 本周活跃', desc: '本周占卜次数排行' },
 ];
-
-const mockData: Record<string, LeaderboardEntry[]> = {
-  master: [
-    { rank: 1, username: '星辰占师', avatar: '🌟', value: 487, label: '次占卜' },
-    { rank: 2, username: '月夜行者', avatar: '🌙', value: 356, label: '次占卜' },
-    { rank: 3, username: '紫水晶心', avatar: '💎', value: 298, label: '次占卜' },
-    { rank: 4, username: '塔罗猫猫', avatar: '🐱', value: 245, label: '次占卜' },
-    { rank: 5, username: '神秘旅人', avatar: '🧙', value: 201, label: '次占卜' },
-    { rank: 6, username: '占星小白', avatar: '⭐', value: 187, label: '次占卜' },
-    { rank: 7, username: '命运之轮', avatar: '🎡', value: 156, label: '次占卜' },
-    { rank: 8, username: '银河低语', avatar: '🌌', value: 134, label: '次占卜' },
-    { rank: 9, username: '晨曦之光', avatar: '🌅', value: 112, label: '次占卜' },
-    { rank: 10, username: '暮色占卜', avatar: '🌆', value: 98, label: '次占卜' },
-  ],
-  streak: [
-    { rank: 1, username: '日月如梭', avatar: '☀️', value: 128, label: '天连续' },
-    { rank: 2, username: '星辰占师', avatar: '🌟', value: 97, label: '天连续' },
-    { rank: 3, username: '坚持达人', avatar: '💪', value: 85, label: '天连续' },
-    { rank: 4, username: '每日冥想', avatar: '🧘', value: 72, label: '天连续' },
-    { rank: 5, username: '塔罗猫猫', avatar: '🐱', value: 63, label: '天连续' },
-    { rank: 6, username: '晨光使者', avatar: '🌄', value: 51, label: '天连续' },
-    { rank: 7, username: '紫水晶心', avatar: '💎', value: 44, label: '天连续' },
-    { rank: 8, username: '星空守望', avatar: '🔭', value: 38, label: '天连续' },
-    { rank: 9, username: '月夜行者', avatar: '🌙', value: 31, label: '天连续' },
-    { rank: 10, username: '探索者X', avatar: '🗺️', value: 25, label: '天连续' },
-  ],
-  popular: [
-    { rank: 1, username: '塔罗猫猫', avatar: '🐱', value: 1203, label: '个赞' },
-    { rank: 2, username: '星辰占师', avatar: '🌟', value: 986, label: '个赞' },
-    { rank: 3, username: '月夜行者', avatar: '🌙', value: 754, label: '个赞' },
-    { rank: 4, username: '神秘旅人', avatar: '🧙', value: 621, label: '个赞' },
-    { rank: 5, username: '紫水晶心', avatar: '💎', value: 543, label: '个赞' },
-    { rank: 6, username: '银河低语', avatar: '🌌', value: 432, label: '个赞' },
-    { rank: 7, username: '占星小白', avatar: '⭐', value: 387, label: '个赞' },
-    { rank: 8, username: '命运之轮', avatar: '🎡', value: 321, label: '个赞' },
-    { rank: 9, username: '日月如梭', avatar: '☀️', value: 276, label: '个赞' },
-    { rank: 10, username: '暮色占卜', avatar: '🌆', value: 198, label: '个赞' },
-  ],
-  weekly: [
-    { rank: 1, username: '命运之轮', avatar: '🎡', value: 23, label: '次本周' },
-    { rank: 2, username: '塔罗猫猫', avatar: '🐱', value: 19, label: '次本周' },
-    { rank: 3, username: '新手小明', avatar: '😊', value: 17, label: '次本周' },
-    { rank: 4, username: '星辰占师', avatar: '🌟', value: 15, label: '次本周' },
-    { rank: 5, username: '好奇宝宝', avatar: '🤔', value: 14, label: '次本周' },
-    { rank: 6, username: '月夜行者', avatar: '🌙', value: 12, label: '次本周' },
-    { rank: 7, username: '暮色占卜', avatar: '🌆', value: 10, label: '次本周' },
-    { rank: 8, username: '紫水晶心', avatar: '💎', value: 9, label: '次本周' },
-    { rank: 9, username: '占星小白', avatar: '⭐', value: 8, label: '次本周' },
-    { rank: 10, username: '日月如梭', avatar: '☀️', value: 7, label: '次本周' },
-  ],
-};
 
 function getRankStyle(rank: number): string {
   if (rank === 1) return 'text-yellow-400';
@@ -83,35 +32,177 @@ function getRankIcon(rank: number): string {
 
 export default function Leaderboard() {
   const [activeTab, setActiveTab] = useState('master');
+  const [data, setData] = useState<LeaderboardEntry[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const currentTab = tabs.find(t => t.id === activeTab)!;
-  const data = mockData[activeTab] || [];
+  useEffect(() => {
+    loadLeaderboard(activeTab);
+  }, [activeTab]);
+
+  async function loadLeaderboard(tab: string) {
+    setLoading(true);
+    try {
+      let entries: LeaderboardEntry[] = [];
+
+      if (tab === 'master') {
+        // 累计占卜次数 — 按 user_id 分组统计
+        const { data: records } = await supabase
+          .from('reading_records')
+          .select('user_id');
+
+        if (records && records.length > 0) {
+          const counts: Record<string, number> = {};
+          records.forEach(r => {
+            counts[r.user_id] = (counts[r.user_id] || 0) + 1;
+          });
+
+          const sorted = Object.entries(counts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10);
+
+          // 获取用户信息
+          const userIds = sorted.map(s => s[0]);
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, email, avatar_url')
+            .in('id', userIds);
+
+          const profileMap: Record<string, any> = {};
+          (profiles || []).forEach(p => { profileMap[p.id] = p; });
+
+          entries = sorted.map(([uid, count], i) => ({
+            rank: i + 1,
+            username: profileMap[uid]?.full_name || profileMap[uid]?.email?.split('@')[0] || '神秘占卜师',
+            avatar: getAvatar(profileMap[uid]?.full_name || '', i),
+            value: count,
+            label: '次占卜',
+          }));
+        }
+      } else if (tab === 'streak') {
+        // 连续签到天数
+        const { data: allDaily } = await supabase
+          .from('daily_readings')
+          .select('user_id, reading_date')
+          .order('reading_date', { ascending: false });
+
+        if (allDaily && allDaily.length > 0) {
+          // 按用户分组
+          const userDates: Record<string, string[]> = {};
+          allDaily.forEach(d => {
+            if (!userDates[d.user_id]) userDates[d.user_id] = [];
+            userDates[d.user_id].push(d.reading_date);
+          });
+
+          const streaks: { uid: string; streak: number }[] = [];
+          for (const [uid, dates] of Object.entries(userDates)) {
+            let streak = 0;
+            const today = new Date().toISOString().split('T')[0];
+            let checkDate = today;
+            if (!dates.includes(today)) {
+              const yesterday = new Date();
+              yesterday.setDate(yesterday.getDate() - 1);
+              checkDate = yesterday.toISOString().split('T')[0];
+            }
+            for (const date of dates) {
+              if (date === checkDate) {
+                streak++;
+                const prev = new Date(checkDate);
+                prev.setDate(prev.getDate() - 1);
+                checkDate = prev.toISOString().split('T')[0];
+              } else if (date < checkDate) {
+                break;
+              }
+            }
+            if (streak > 0) streaks.push({ uid, streak });
+          }
+
+          const sorted = streaks.sort((a, b) => b.streak - a.streak).slice(0, 10);
+          const userIds = sorted.map(s => s.uid);
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', userIds);
+
+          const profileMap: Record<string, any> = {};
+          (profiles || []).forEach(p => { profileMap[p.id] = p; });
+
+          entries = sorted.map((s, i) => ({
+            rank: i + 1,
+            username: profileMap[s.uid]?.full_name || profileMap[s.uid]?.email?.split('@')[0] || '神秘占卜师',
+            avatar: getAvatar(profileMap[s.uid]?.full_name || '', i),
+            value: s.streak,
+            label: '天连续',
+          }));
+        }
+      } else if (tab === 'weekly') {
+        // 本周占卜次数
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const { data: records } = await supabase
+          .from('reading_records')
+          .select('user_id')
+          .gte('created_at', weekAgo.toISOString());
+
+        if (records && records.length > 0) {
+          const counts: Record<string, number> = {};
+          records.forEach(r => {
+            counts[r.user_id] = (counts[r.user_id] || 0) + 1;
+          });
+
+          const sorted = Object.entries(counts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10);
+
+          const userIds = sorted.map(s => s[0]);
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', userIds);
+
+          const profileMap: Record<string, any> = {};
+          (profiles || []).forEach(p => { profileMap[p.id] = p; });
+
+          entries = sorted.map(([uid, count], i) => ({
+            rank: i + 1,
+            username: profileMap[uid]?.full_name || profileMap[uid]?.email?.split('@')[0] || '神秘占卜师',
+            avatar: getAvatar(profileMap[uid]?.full_name || '', i),
+            value: count,
+            label: '次本周',
+          }));
+        }
+      }
+
+      setData(entries);
+    } catch (e) {
+      console.error('Failed to load leaderboard:', e);
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <div className="min-h-screen pt-24 pb-16 px-4">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
+    <div className="min-h-screen py-8 px-4">
+      <div className="max-w-2xl mx-auto">
         <motion.div
-          className="text-center mb-8"
-          initial={{ opacity: 0, y: -20 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-8"
         >
-          <h1 className="text-3xl md:text-4xl font-bold mb-2">
-            🏆 <span className="text-gold-gradient">排行榜</span>
-          </h1>
-          <p className="text-text-secondary">星语塔罗社区的顶尖占卜师</p>
+          <h1 className="text-3xl font-bold text-text-primary mb-2">🏆 排行榜</h1>
+          <p className="text-text-secondary">与其他占卜师一较高下</p>
         </motion.div>
 
         {/* Tabs */}
-        <div className="flex flex-wrap justify-center gap-2 mb-8">
-          {tabs.map(tab => (
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+          {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
+              className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
                 activeTab === tab.id
                   ? 'bg-accent-gold/20 text-accent-gold border border-accent-gold/30'
-                  : 'bg-bg-secondary/50 text-text-secondary border border-accent-purple/10 hover:border-accent-purple/30 hover:text-text-primary'
+                  : 'bg-white/5 text-text-secondary hover:bg-white/10 border border-white/10'
               }`}
             >
               {tab.label}
@@ -119,118 +210,66 @@ export default function Leaderboard() {
           ))}
         </div>
 
-        {/* Tab description */}
-        <motion.p
-          key={activeTab}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-center text-text-secondary/60 text-sm mb-6"
-        >
-          {currentTab.desc}
-        </motion.p>
+        {/* Description */}
+        <p className="text-text-secondary/60 text-sm text-center mb-4">
+          {tabs.find(t => t.id === activeTab)?.desc}
+        </p>
 
-        {/* Top 3 Podium */}
-        <motion.div
-          key={`podium-${activeTab}`}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex justify-center items-end gap-4 mb-8"
-        >
-          {/* 2nd place */}
-          {data[1] && (
-            <div className="text-center">
-              <div className="text-3xl mb-1">{data[1].avatar}</div>
-              <div className="text-text-primary text-sm font-medium">{data[1].username}</div>
-              <div className="text-gray-300 text-xs">{data[1].value} {data[1].label}</div>
-              <div className="mt-2 w-20 h-16 bg-gradient-to-t from-gray-600/20 to-gray-400/20 rounded-t-lg flex items-center justify-center">
-                <span className="text-2xl">🥈</span>
-              </div>
-            </div>
-          )}
-
-          {/* 1st place */}
-          {data[0] && (
-            <div className="text-center">
-              <motion.div
-                className="text-4xl mb-1"
-                animate={{ y: [0, -5, 0] }}
-                transition={{ repeat: Infinity, duration: 2 }}
-              >
-                {data[0].avatar}
-              </motion.div>
-              <div className="text-accent-gold text-sm font-bold">{data[0].username}</div>
-              <div className="text-accent-gold/70 text-xs">{data[0].value} {data[0].label}</div>
-              <div className="mt-2 w-20 h-24 bg-gradient-to-t from-accent-gold/20 to-accent-gold/10 rounded-t-lg flex items-center justify-center border-t-2 border-accent-gold/30">
-                <span className="text-3xl">🥇</span>
-              </div>
-            </div>
-          )}
-
-          {/* 3rd place */}
-          {data[2] && (
-            <div className="text-center">
-              <div className="text-3xl mb-1">{data[2].avatar}</div>
-              <div className="text-text-primary text-sm font-medium">{data[2].username}</div>
-              <div className="text-amber-600/70 text-xs">{data[2].value} {data[2].label}</div>
-              <div className="mt-2 w-20 h-12 bg-gradient-to-t from-amber-800/20 to-amber-600/20 rounded-t-lg flex items-center justify-center">
-                <span className="text-2xl">🥉</span>
-              </div>
-            </div>
-          )}
-        </motion.div>
-
-        {/* Full List */}
+        {/* Leaderboard List */}
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="bg-bg-secondary/40 border border-accent-purple/10 rounded-2xl overflow-hidden"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-2"
           >
-            {data.map((entry, i) => (
-              <motion.div
-                key={entry.rank}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className={`flex items-center gap-4 px-6 py-4 ${
-                  i < data.length - 1 ? 'border-b border-accent-purple/5' : ''
-                } ${i < 3 ? 'bg-accent-gold/5' : ''}`}
-              >
-                {/* Rank */}
-                <div className={`w-8 text-center font-bold ${getRankStyle(entry.rank)}`}>
-                  {getRankIcon(entry.rank)}
-                </div>
-
-                {/* Avatar */}
-                <div className="text-2xl">{entry.avatar}</div>
-
-                {/* Name */}
-                <div className="flex-1">
-                  <div className="text-text-primary text-sm font-medium">{entry.username}</div>
-                </div>
-
-                {/* Value */}
-                <div className="text-right">
-                  <span className="text-accent-gold font-bold">{entry.value}</span>
-                  <span className="text-text-secondary/60 text-xs ml-1">{entry.label}</span>
-                </div>
-              </motion.div>
-            ))}
+            {loading ? (
+              <div className="text-center py-12 text-text-secondary">加载中...</div>
+            ) : data.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="text-4xl mb-3">🌟</div>
+                <p className="text-text-secondary">还没有人上榜</p>
+                <p className="text-text-secondary/60 text-sm mt-1">快去占卜，成为第一名！</p>
+              </div>
+            ) : (
+              data.map((entry, i) => (
+                <motion.div
+                  key={`${activeTab}-${entry.rank}`}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className={`flex items-center gap-4 p-4 rounded-xl border transition-colors ${
+                    entry.rank <= 3
+                      ? 'bg-gradient-to-r from-accent-gold/10 to-transparent border-accent-gold/20'
+                      : 'bg-white/5 border-white/10'
+                  }`}
+                >
+                  <div className={`text-xl font-bold w-8 text-center ${getRankStyle(entry.rank)}`}>
+                    {getRankIcon(entry.rank)}
+                  </div>
+                  <div className="text-2xl">{entry.avatar}</div>
+                  <div className="flex-1">
+                    <div className="text-text-primary font-medium">{entry.username}</div>
+                    <div className="text-text-secondary text-sm">
+                      {entry.value} {entry.label}
+                    </div>
+                  </div>
+                </motion.div>
+              ))
+            )}
           </motion.div>
         </AnimatePresence>
-
-        {/* Note */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="text-center text-text-secondary/40 text-xs mt-6"
-        >
-          📊 数据每小时更新 · 登录后即可参与排名
-        </motion.p>
       </div>
     </div>
   );
+}
+
+const avatarEmojis = ['🌟', '🌙', '💎', '🐱', '🧙', '⭐', '🎡', '🌌', '🌅', '🌆'];
+function getAvatar(name: string, index: number): string {
+  if (name) {
+    const code = name.charCodeAt(0);
+    return avatarEmojis[code % avatarEmojis.length];
+  }
+  return avatarEmojis[index % avatarEmojis.length];
 }
